@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>趣味验证</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        
+        .captcha-container { width: 100%; max-width: 400px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
+        
+        .header { background-color: #1e88e5; color: #fff; padding: 20px; text-align: center; font-size: 16px; line-height: 1.5; }
+        .header span { font-weight: bold; color: #ffeb3b; }
+
+        .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background-color: #fff; }
+        .grid-item { aspect-ratio: 1 / 1; background-color: #000; cursor: pointer; position: relative; overflow: hidden; }
+        .grid-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        
+        .grid-item.selected::after {
+            content: "✓"; position: absolute; top: 5px; right: 5px; background: #1e88e5; color: white;
+            width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 24px; font-size: 14px; font-weight: bold;
+        }
+        .grid-item.selected { outline: 3px solid #1e88e5; outline-offset: -3px; }
+
+        .footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #fff; border-top: 1px solid #eee; }
+        .icons { display: flex; gap: 15px; color: #888; font-size: 22px; cursor: pointer; }
+        .icons i { font-style: normal; }
+        .icons i:active { color: #1e88e5; transform: scale(0.9); }
+        
+        .submit-btn { background-color: #1e88e5; color: #fff; border: none; padding: 8px 20px; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: bold; }
+        .submit-btn:active { background-color: #1565c0; }
+
+        .modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100; color: #fff; text-align: center; padding: 20px;
+        }
+        .modal.show { display: flex; }
+        .modal-box { background: #fff; color: #333; padding: 20px; border-radius: 8px; margin-bottom: 15px; width: 90%; max-width: 300px; }
+        .modal-box h3 { margin-bottom: 10px; font-size: 16px; color: #1e88e5; }
+        .modal-box p { font-size: 14px; line-height: 1.6; word-break: break-all; }
+        
+        .qr-box { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="captcha-container">
+    <div class="header">
+        请选择包含<兔齿鲨>的所有图块
+    </div>
+
+    <div class="grid-container" id="grid"></div>
+
+    <div class="footer">
+        <div class="icons">
+            <i id="resetBtn" title="重置">↻</i>
+            <i id="infoBtn" title="信息">ℹ️</i>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="submit-btn" id="shareBtn" style="background-color: #4caf50;">分享</button>
+            <button class="submit-btn" id="submitBtn">提交</button>
+        </div>
+    </div>
+
+    <div class="modal" id="qrModal">
+        <p>扫码打开本验证页面</p>
+        <div class="qr-box" id="qrcode"></div>
+        <button class="submit-btn" onclick="document.getElementById('qrModal').classList.remove('show')">关闭</button>
+    </div>
+
+    <div class="modal" id="infoModal">
+        <div class="modal-box">
+            <h3 id="infoTitle">信息标题</h3>
+            <p id="infoContent">这里是你可以自由编辑的链接信息文字。</p>
+        </div>
+        <button class="submit-btn" onclick="document.getElementById('infoModal').classList.remove('show')">关闭</button>
+    </div>
+
+    <div class="modal" id="resultModal">
+        <div class="modal-box">
+            <h3 id="resultTitle">提示</h3>
+            <p id="resultContent">这里是提示内容</p>
+        </div>
+        <button class="submit-btn" onclick="document.getElementById('resultModal').classList.remove('show')">确定</button>
+    </div>
+</div>
+
+<script>
+    // ==================== 配置区（你可以随意修改这里的内容） ====================
+    
+    // 1. 图片链接（本地图片写 "./图片名.png"）
+    const images = [
+        "./1.jpg", "./2.jpg", "./3.jpg",
+        "./4.png", "./5.png", "./6.png",
+        "./7.png", "./8.png", "./9.png"
+    ];
+
+    // 2. 哪些图片是“正确答案”？（填图片的路径，必须和上面 images 里的完全一致）
+    const correctImages = ["./1.jpg", "./2.jpg", "./3.jpg", "./8.png"]; 
+
+    // 3. 信息弹窗的内容
+    const infoTitleText = "关于本验证";
+    const infoContentText = "🤗这是一个关于乔纳森·布兰戴斯的趣味验证页面。\n\n页面制作者：xhs@🍊\n兔齿鲨塑来源：xhs@Soso\n\n☺️🥰感谢游玩！";
+
+    // 4. 验证成功的弹窗内容
+    const successTitle = "(˶>ᗜ<˶)验证成功！";
+    const successContent = "恭喜你，完全正确！\n😋小乔兔齿鲨塑是极好的！";
+
+    // 5. 【错选】的弹窗内容（选了不该选的图）
+    const wrongSelectTitle = "ε=(´ο｀*)))验证失败…";
+    const wrongSelectContent = "选错了噢！\n🥺兔就这样看着你";
+
+    // 6. 【漏选】的弹窗内容（该选的没选全）
+    const missSelectTitle = "ε=(´ο｀*)))验证失败…";
+    const missSelectContent = "😖是不是漏选了什么？\n请把找到的所有兔齿鲨都选上吧！";
+
+    // 7. 未选择任何图块时的提示
+    const emptyTitle = "o(╥﹏╥)o无法验证";
+    const emptyContent = "请至少选择一个图块！\n😣没有找到兔齿鲨吗？";
+
+    // ==========================================================================
+
+    const gridContainer = document.getElementById('grid');
+    const submitBtn = document.getElementById('submitBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const infoBtn = document.getElementById('infoBtn');
+    const qrModal = document.getElementById('qrModal');
+    const infoModal = document.getElementById('infoModal');
+    const resultModal = document.getElementById('resultModal');
+    
+    let selectedIndices = [];
+    let shuffledImages = [];
+
+    function shuffleArray(array) {
+        const newArray = [...array];
+        for (let i = newArray.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+        }
+        return newArray;
+    }
+
+    function initGrid() {
+        gridContainer.innerHTML = '';
+        selectedIndices = [];
+        shuffledImages = shuffleArray(images);
+
+        for (let i = 0; i < 9; i++) {
+            const div = document.createElement('div');
+            div.className = 'grid-item';
+            div.dataset.index = i;
+            
+            const img = document.createElement('img');
+            img.src = shuffledImages[i]; 
+            div.appendChild(img);
+
+            div.addEventListener('click', () => toggleSelect(i, div));
+            gridContainer.appendChild(div);
+        }
+    }
+
+    function toggleSelect(index, element) {
+        if (element.classList.contains('selected')) {
+            element.classList.remove('selected');
+            selectedIndices = selectedIndices.filter(i => i !== index);
+        } else {
+            element.classList.add('selected');
+            selectedIndices.push(index);
+        }
+    }
+
+    function showResult(title, content) {
+        document.getElementById('resultTitle').innerText = title;
+        document.getElementById('resultContent').innerText = content;
+        resultModal.classList.add('show');
+    }
+
+    // 1. 提交验证
+    submitBtn.addEventListener('click', () => {
+        if (selectedIndices.length === 0) {
+            showResult(emptyTitle, emptyContent);
+            return;
+        }
+
+        // 获取用户选中的所有图片路径
+        const selectedImageSrcs = selectedIndices.map(index => shuffledImages[index]);
+
+        // 判断逻辑：分三步走
+        // 第一步：检查是否有“错选”（用户选中的图片里，有没有不在正确列表里的）
+        const hasWrongSelection = selectedImageSrcs.some(src => !correctImages.includes(src));
+
+        // 第二步：检查是否有“漏选”（正确列表里，有没有没被用户选中的）
+        const hasMissingSelection = correctImages.some(src => !selectedImageSrcs.includes(src));
+
+        // 第三步：根据结果给出不同提示
+        if (hasWrongSelection && hasMissingSelection) {
+            // 既有错选，又有漏选。这里你可以合并提示，或者只提示其中一种。
+            // 我这里默认提示“选错了”，你可以按需修改。
+            showResult(wrongSelectTitle, wrongSelectContent);
+        } else if (hasWrongSelection) {
+            // 只有错选
+            showResult(wrongSelectTitle, wrongSelectContent);
+        } else if (hasMissingSelection) {
+            // 只有漏选
+            showResult(missSelectTitle, missSelectContent);
+        } else {
+            // 全部选对，没有错选也没有漏选
+            showResult(successTitle, successContent);
+        }
+
+        // 如果验证失败，自动清空选择，方便用户重选
+        if (hasWrongSelection || hasMissingSelection) {
+            document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('selected'));
+            selectedIndices = [];
+        }
+    });
+
+    // 2. 重置按钮
+    resetBtn.addEventListener('click', () => {
+        initGrid();
+    });
+
+    // 3. 信息按钮
+    infoBtn.addEventListener('click', () => {
+        document.getElementById('infoTitle').innerText = infoTitleText;
+        document.getElementById('infoContent').innerText = infoContentText;
+        infoModal.classList.add('show');
+    });
+
+    // 4. 分享按钮
+    shareBtn.addEventListener('click', () => {
+        qrModal.classList.add('show');
+        const qrcodeContainer = document.getElementById('qrcode');
+        qrcodeContainer.innerHTML = ''; 
+        
+        const currentUrl = window.location.href; 
+
+        new QRCode(qrcodeContainer, {
+            text: currentUrl,
+            width: 150,
+            height: 150,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+    });
+
+    initGrid();
+</script>
+</body>
+</html>
